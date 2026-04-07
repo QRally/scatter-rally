@@ -3,15 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>SCATTER MASTER v1.2</title>
+    <title>SCATTER MASTER v1.3</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         :root { --bg: #050505; --card: #121212; --found: #28a745; --searching: #ffc107; --border: #333; }
-        body { font-family: sans-serif; background: var(--bg); color: white; margin: 0; padding: 15px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: white; margin: 0; padding: 15px; }
+        
         .header { text-align: center; padding: 20px; background: var(--card); border-radius: 15px; margin-bottom: 15px; border: 1px solid var(--border); }
+        .car-num { color: var(--searching); font-weight: bold; letter-spacing: 1px; font-size: 14px; }
+        .event-title { font-size: 24px; font-weight: 900; margin: 5px 0; }
+        
         .radar-box { height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; border-radius: 15px; border: 2px solid var(--border); margin-bottom: 15px; position: relative; overflow: hidden; }
-        .status-text { font-size: 28px; font-weight: 900; z-index: 2; letter-spacing: 3px; }
-        .control-card { background: var(--card); padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #444; margin-bottom: 10px; }
-        .control-card.found { border-left-color: var(--found); background: #0a150a; }
+        .status-text { font-size: 28px; font-weight: 900; z-index: 2; letter-spacing: 3px; transition: 0.3s; }
+        
+        .control-card { background: var(--card); padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #444; margin-bottom: 10px; transition: 0.5s; }
+        .control-card.found { border-left-color: var(--found); background: #0a150a; opacity: 0.8; }
+        
         @keyframes radar { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
         .pulse { position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,193,7,0.1) 0%, transparent 70%); animation: radar 2s infinite; }
     </style>
@@ -19,8 +27,8 @@
 <body>
 
     <div class="header">
-        <div id="carDisplay" style="color:var(--searching); font-weight:bold;">SCATTER ACTIVE</div>
-        <div id="eventDisplay" style="font-size:20px; font-weight:bold;">ALED'S TEST RUN</div>
+        <div id="carDisplay" class="car-num">CONNECTING...</div>
+        <div id="eventDisplay" class="event-title">SCATTER READY</div>
         <div id="gpsStatus" style="font-size: 11px; color: #555;">GPS: Initializing...</div>
     </div>
 
@@ -33,46 +41,60 @@
     <div id="list"></div>
 
 <script>
+    // --- 1. CONFIGURATION ---
     const SCATTER_DATA = {
+        event_name: "ALED'S TECH SCATTER",
         points: [
-            { id: "TEST 1", coords: "52.146921,-4.057032" },
-            { id: "TEST 2", coords: "51.989107,-3.726333" },
-            { id: "LIVING ROOM", coords: "52.146870,-4.056885" } // Your updated home coords
+            { id: "Point 1", coords: "52.146921,-4.057032" },
+            { id: "Point 2", coords: "51.989107,-3.726333" },
+            { id: "LIVING ROOM", coords: "52.146870,-4.056885" } 
         ]
     };
 
-    let foundIds = new Set();
+    // REPLACE THIS WITH YOUR REAL FIREBASE URL
+    const firebaseConfig = { databaseURL: "https://your-project-name.firebaseio.com" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    // The math that was missing!
+    // --- 2. STATE ---
+    let carNum = prompt("Enter Car #:", "1") || "0";
+    let foundIds = new Set();
+    document.getElementById('carDisplay').innerText = "CAR " + carNum + " ACTIVE";
+    document.getElementById('eventDisplay').innerText = SCATTER_DATA.event_name;
+
+    // --- 3. MATH & UI ---
     function calcDist(lat1, lon1, lat2, lon2) {
-        const R = 6371e3; // Meters
+        const R = 6371e3;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = Math.sin(dLat/2) * Math.sin(dLat/2) + 
                   Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
     function renderList() {
         const container = document.getElementById('list');
         container.innerHTML = '';
-        SCATTER_DATA.points.forEach(c => {
+        
+        // Sort unfound to the top
+        const sorted = [...SCATTER_DATA.points].sort((a, b) => foundIds.has(a.id) - foundIds.has(b.id));
+
+        sorted.forEach(c => {
             const isFound = foundIds.has(c.id);
             const card = document.createElement('div');
             card.className = `control-card ${isFound ? 'found' : ''}`;
             card.innerHTML = `
                 <div>
-                    <b>${c.id}</b>
-                    <div id="dist-${c.id}" style="font-size:12px; color:#888;">
-                        ${isFound ? 'CHECKED IN' : 'CALCULATING...'}
+                    <b style="font-size:18px;">${c.id}</b>
+                    <div id="dist-${c.id}" style="font-size:13px; color:#888;">
+                        ${isFound ? 'STAMPED' : 'LOCATING...'}
                     </div>
                 </div>
-                <div>${isFound ? '✅' : '⭕'}</div>
+                <div style="font-size:24px;">${isFound ? '✅' : '⭕'}</div>
             `;
             container.appendChild(card);
         });
-        document.getElementById('pointsCount').innerText = `${foundIds.size} / ${SCATTER_DATA.points.length} TOTAL`;
+        document.getElementById('pointsCount').innerText = `${foundIds.size} / ${SCATTER_DATA.points.length} FOUND`;
     }
 
     function startTracking() {
@@ -86,30 +108,35 @@
                 const [pLat, pLng] = c.coords.split(',').map(Number);
                 const distance = calcDist(latitude, longitude, pLat, pLng);
                 
-                // Update the distance text on the card
                 const distEl = document.getElementById(`dist-${c.id}`);
                 if (distEl) distEl.innerText = Math.round(distance) + "m away";
 
-                // ARRIVAL TRIGGER (50 meters)
+                // ARRIVAL (50m Radius)
                 if (distance < 50 && accuracy < 45) {
                     foundIds.add(c.id);
-                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
                     
-                    // Visual feedback
-                    document.getElementById('radarStatus').innerText = "FOUND!";
-                    document.getElementById('radarStatus').style.color = "#28a745";
+                    // 1. Cloud Sync
+                    db.ref(`scatter/${SCATTER_DATA.event_name}/car_${carNum}/${c.id}`).set({
+                        time: new Date().toLocaleTimeString(),
+                        timestamp: Date.now()
+                    });
+
+                    // 2. Physical Feedback
+                    if (navigator.vibrate) navigator.vibrate([150, 100, 150]);
+                    
+                    // 3. UI Update
+                    const status = document.getElementById('radarStatus');
+                    status.innerText = "FOUND!";
+                    status.style.color = "#28a745";
                     
                     setTimeout(() => {
-                        document.getElementById('radarStatus').innerText = "SEARCHING";
-                        document.getElementById('radarStatus').style.color = "#ffc107";
+                        status.innerText = "SEARCHING";
+                        status.style.color = "#ffc107";
+                        renderList(); 
                     }, 3000);
-
-                    renderList();
                 }
             });
-        }, (err) => {
-            console.error(err);
-        }, { enableHighAccuracy: true });
+        }, null, { enableHighAccuracy: true });
     }
 
     renderList();
