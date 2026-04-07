@@ -52,9 +52,10 @@
     };
 
     // REPLACE THIS WITH YOUR REAL FIREBASE URL
-    const firebaseConfig = { databaseURL: "https://your-project-name.firebaseio.com" };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+const firebaseConfig = { 
+    databaseURL: "https://the-regulator-rally-default-rtdb.europe-west1.firebasedatabase.app" 
+};
+
 
     // --- 2. STATE ---
     let carNum = prompt("Enter Car #:", "1") || "0";
