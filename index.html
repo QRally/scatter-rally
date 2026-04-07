@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>SCATTER MASTER v1.3</title>
+    <title>SCATTER MASTER v1.5</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
@@ -51,11 +51,13 @@
         ]
     };
 
-    // REPLACE THIS WITH YOUR REAL FIREBASE URL
-const firebaseConfig = { 
-    databaseURL: "https://the-regulator-rally-default-rtdb.europe-west1.firebasedatabase.app" 
-};
+    const firebaseConfig = { 
+        databaseURL: "https://the-regulator-rally-default-rtdb.europe-west1.firebasedatabase.app" 
+    };
 
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
     // --- 2. STATE ---
     let carNum = prompt("Enter Car #:", "1") || "0";
@@ -77,7 +79,6 @@ const firebaseConfig = {
         const container = document.getElementById('list');
         container.innerHTML = '';
         
-        // Sort unfound to the top
         const sorted = [...SCATTER_DATA.points].sort((a, b) => foundIds.has(a.id) - foundIds.has(b.id));
 
         sorted.forEach(c => {
@@ -99,6 +100,11 @@ const firebaseConfig = {
     }
 
     function startTracking() {
+        if (!navigator.geolocation) {
+            alert("Geolocation not supported");
+            return;
+        }
+
         navigator.geolocation.watchPosition(pos => {
             const { latitude, longitude, accuracy } = pos.coords;
             document.getElementById('gpsStatus').innerText = `GPS ACCURACY: ${accuracy.toFixed(1)}m`;
@@ -112,32 +118,41 @@ const firebaseConfig = {
                 const distEl = document.getElementById(`dist-${c.id}`);
                 if (distEl) distEl.innerText = Math.round(distance) + "m away";
 
-                // ARRIVAL (50m Radius)
-                if (distance < 60 && accuracy < 100) {
+                // ARRIVAL RADIUS: 60 meters
+                if (distance < 60) {
+                    // 1. Mark as found immediately in local state
                     foundIds.add(c.id);
                     
-                    // 1. Cloud Sync
-                    db.ref(`scatter/${SCATTER_DATA.event_name}/car_${carNum}/${c.id}`).set({
-                        time: new Date().toLocaleTimeString(),
-                        timestamp: Date.now()
-                    });
-
-                    // 2. Physical Feedback
-                    if (navigator.vibrate) navigator.vibrate([150, 100, 150]);
-                    
-                    // 3. UI Update
+                    // 2. Immediate UI Feedback
                     const status = document.getElementById('radarStatus');
                     status.innerText = "FOUND!";
                     status.style.color = "#28a745";
+                    renderList(); 
+
+                    // 3. Physical Feedback
+                    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+
+                    // 4. Background Cloud Sync
+                    db.ref(`scatter/${SCATTER_DATA.event_name}/car_${carNum}/${c.id}`).set({
+                        time: new Date().toLocaleTimeString(),
+                        timestamp: Date.now(),
+                        accuracy_at_find: accuracy
+                    }).catch(e => console.error("Firebase Sync Error:", e));
                     
+                    // 5. Reset Radar status after 3 seconds
                     setTimeout(() => {
                         status.innerText = "SEARCHING";
                         status.style.color = "#ffc107";
-                        renderList(); 
                     }, 3000);
                 }
             });
-        }, null, { enableHighAccuracy: true });
+        }, err => {
+            document.getElementById('gpsStatus').innerText = "GPS Error: Please enable location.";
+        }, { 
+            enableHighAccuracy: true, 
+            maximumAge: 0, 
+            timeout: 10000 
+        });
     }
 
     renderList();
