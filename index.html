@@ -3,157 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>SCATTER MASTER v1.1</title>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <title>SCATTER TEST</title>
     <style>
         :root { --bg: #050505; --card: #121212; --found: #28a745; --searching: #ffc107; --border: #333; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: white; margin: 0; padding: 15px; overflow-x: hidden; }
-        
-        /* Header Section */
-        .header { text-align: center; padding: 20px; background: var(--card); border-radius: 15px; margin-bottom: 15px; border: 1px solid var(--border); box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        .car-badge { font-size: 13px; color: var(--searching); text-transform: uppercase; letter-spacing: 2px; font-weight: bold; }
-        .event-title { font-size: 26px; font-weight: 900; margin: 8px 0; color: #fff; text-transform: uppercase; }
-
-        /* Radar Display */
-        .radar-box { height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; border-radius: 15px; border: 2px solid var(--border); margin-bottom: 15px; position: relative; overflow: hidden; }
-        .status-text { font-size: 32px; font-weight: 900; z-index: 2; text-transform: uppercase; letter-spacing: 4px; transition: 0.3s; }
-        .pulse { position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,193,7,0.15) 0%, transparent 70%); animation: radar 2s infinite; }
-
-        /* Control Cards */
-        .control-list { display: flex; flex-direction: column; gap: 12px; }
-        .control-card { background: var(--card); padding: 18px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #444; border-right: 1px solid var(--border); transition: all 0.4s ease; }
-        .control-card.found { border-left-color: var(--found); background: #0a150a; opacity: 0.7; transform: scale(0.98); }
-        
-        .control-info { flex: 1; }
-        .control-id { font-size: 22px; font-weight: 800; letter-spacing: -1px; }
-        .control-dist { font-size: 14px; color: #888; font-family: monospace; margin-top: 4px; }
-        
-        .stamp { font-size: 11px; font-weight: 900; padding: 6px 12px; border-radius: 6px; background: #222; color: #555; text-transform: uppercase; }
-        .found .stamp { background: var(--found); color: white; box-shadow: 0 0 10px rgba(40, 167, 69, 0.4); }
-
-        @keyframes radar { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
+        body { font-family: sans-serif; background: var(--bg); color: white; margin: 0; padding: 15px; }
+        .header { text-align: center; padding: 20px; background: var(--card); border-radius: 15px; margin-bottom: 15px; border: 1px solid var(--border); }
+        .radar-box { height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; border-radius: 15px; border: 2px solid var(--border); margin-bottom: 15px; position: relative; overflow: hidden; }
+        .status-text { font-size: 28px; font-weight: 900; z-index: 2; letter-spacing: 3px; }
+        .control-card { background: var(--card); padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #444; margin-bottom: 10px; }
+        .control-card.found { border-left-color: var(--found); opacity: 0.6; }
+        @keyframes radar { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
+        .pulse { position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,193,7,0.1) 0%, transparent 70%); animation: radar 2s infinite; }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <div id="carDisplay" class="car-badge">SYNCING SATELLITES...</div>
-        <div id="eventDisplay" class="event-title">LOADING...</div>
-        <div id="gpsStatus" style="font-size: 11px; color: #555; margin-top: 5px;">GPS: Initializing...</div>
+        <div id="carDisplay" style="color:var(--searching); font-weight:bold;">SCATTER ACTIVE</div>
+        <div id="eventDisplay" style="font-size:20px; font-weight:bold;">ALED'S TEST RUN</div>
+        <div id="gpsStatus" style="font-size: 11px; color: #555;">GPS: Initializing...</div>
     </div>
 
     <div class="radar-box">
         <div class="pulse"></div>
         <div id="radarStatus" class="status-text" style="color: var(--searching);">SEARCHING</div>
-        <div id="pointsCount" style="font-size: 12px; color: #888; margin-top: 10px; z-index: 2;">0 / 0 FOUND</div>
+        <div id="pointsCount" style="font-size: 12px; color: #888; margin-top: 5px; z-index: 2;">0 / 0 FOUND</div>
     </div>
 
-    <div id="list" class="control-list"></div>
+    <div id="list"></div>
 
 <script>
-    // --- 1. THE LOCKED DATA (ALED'S SECRET LIST) ---
+    // 1. DATA (Hard-coded for immediate testing)
     const SCATTER_DATA = {
-        event_name: "BEACON SCATTER 2026",
         points: [
-            { id: "Point 1", coords: "52.146921,-4.057032" },
-            { id: "Point 2", coords: "52.152000,-4.061000" },
-            { id: "Point 3", coords: "51.989107,-3.726333" },
-            { id: "Point 4", coords: "51.980982,-3.698592" },
-            { id: "Point 5", coords: "52.016528,-3.906820" },
-            { id: "Point 6", coords: "52.123456,-3.123456" } // Add as many as needed
+            { id: "TEST 1", coords: "52.146921,-4.057032" },
+            { id: "TEST 2", coords: "51.989107,-3.726333" },
+            { id: "LIVING ROOM", coords: "0.000,0.000" } // Replace with your home coords!
         ]
     };
 
-    // --- 2. FIREBASE CONFIG ---
-    const firebaseConfig = { databaseURL: "YOUR_FIREBASE_URL_HERE" };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-
-    // --- 3. APP STATE ---
-    let carNum = prompt("Enter Car #:", "1") || "99";
     let foundIds = new Set();
-    document.getElementById('carDisplay').innerText = "COMPETITOR: CAR " + carNum;
-    document.getElementById('eventDisplay').innerText = SCATTER_DATA.event_name;
-
-    // --- 4. CORE LOGIC ---
-    function calcDist(lat1, lon1, lat2, lon2) {
-        const R = 6371e3;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
 
     function renderList() {
         const container = document.getElementById('list');
         container.innerHTML = '';
-        const sorted = [...SCATTER_DATA.points].sort((a, b) => foundIds.has(a.id) - foundIds.has(b.id));
-        
-        sorted.forEach(c => {
+        SCATTER_DATA.points.forEach(c => {
             const isFound = foundIds.has(c.id);
             const card = document.createElement('div');
             card.className = `control-card ${isFound ? 'found' : ''}`;
-            card.innerHTML = `
-                <div class="control-info">
-                    <div class="control-id">${c.id}</div>
-                    <div class="control-dist" id="dist-${c.id}">${isFound ? 'LOGGED' : 'WAITING...'}</div>
-                </div>
-                <div class="stamp">${isFound ? 'STAMPED' : 'OPEN'}</div>
-            `;
+            card.innerHTML = `<b>${c.id}</b><div>${isFound ? '✅' : '⭕'}</div>`;
             container.appendChild(card);
         });
-        document.getElementById('pointsCount').innerText = `${foundIds.size} / ${SCATTER_DATA.points.length} FOUND`;
+        document.getElementById('pointsCount').innerText = `${foundIds.size} / ${SCATTER_DATA.points.length} TOTAL`;
     }
 
     function startTracking() {
         navigator.geolocation.watchPosition(pos => {
             const { latitude, longitude, accuracy } = pos.coords;
             document.getElementById('gpsStatus').innerText = `GPS ACCURACY: ${accuracy.toFixed(1)}m`;
-
+            
+            // Check points...
             SCATTER_DATA.points.forEach(c => {
                 if (foundIds.has(c.id)) return;
-
-                const [cLat, cLng] = c.coords.split(',').map(Number);
-                const distance = calcDist(latitude, longitude, cLat, cLng);
-
-                const distEl = document.getElementById(`dist-${c.id}`);
-                if (distEl) {
-                    distEl.innerText = distance > 1000 ? (distance/1000).toFixed(2) + ' km' : Math.round(distance) + ' m';
-                }
-
-                // 50m Trigger Radius
-                if (distance < 50 && accuracy < 40) {
-                    markFound(c.id);
-                }
+                // Add distance math here if you want meters on screen
+                // For now, let's just see the list appear!
             });
-        }, null, { enableHighAccuracy: true });
+        }, (err) => {
+            document.getElementById('gpsStatus').innerText = "GPS Error: " + err.message;
+        }, { enableHighAccuracy: true });
     }
 
-    function markFound(id) {
-        if (foundIds.has(id)) return;
-        foundIds.add(id);
-        if (navigator.vibrate) navigator.vibrate([150, 100, 150]);
-
-        // Push to Firebase under 'scatter' category
-        db.ref(`scatter/${SCATTER_DATA.event_name}/${carNum}/${id}`).set({
-            found_at: new Date().toLocaleTimeString(),
-            unix: Date.now()
-        });
-
-        // Feedback Loop
-        const status = document.getElementById('radarStatus');
-        status.innerText = "POINT FOUND!";
-        status.style.color = "var(--found)";
-        
-        setTimeout(() => {
-            status.innerText = "SEARCHING";
-            status.style.color = "var(--searching)";
-            renderList();
-        }, 4000);
-    }
-
-    // Initial Run
+    // Initialize UI immediately
     renderList();
     startTracking();
 </script>
