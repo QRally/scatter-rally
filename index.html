@@ -3,47 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>SCATTER MASTER v1.5</title>
+    <title>SCATTER MASTER v1.6</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         :root { --bg: #050505; --card: #121212; --found: #28a745; --searching: #ffc107; --border: #333; }
         body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: white; margin: 0; padding: 15px; }
-        
         .header { text-align: center; padding: 20px; background: var(--card); border-radius: 15px; margin-bottom: 15px; border: 1px solid var(--border); }
         .car-num { color: var(--searching); font-weight: bold; letter-spacing: 1px; font-size: 14px; }
         .event-title { font-size: 24px; font-weight: 900; margin: 5px 0; }
-        
         .radar-box { height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; border-radius: 15px; border: 2px solid var(--border); margin-bottom: 15px; position: relative; overflow: hidden; }
         .status-text { font-size: 28px; font-weight: 900; z-index: 2; letter-spacing: 3px; transition: 0.3s; }
-        
         .control-card { background: var(--card); padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #444; margin-bottom: 10px; transition: 0.5s; }
         .control-card.found { border-left-color: var(--found); background: #0a150a; opacity: 0.8; }
-        
         @keyframes radar { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
         .pulse { position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,193,7,0.1) 0%, transparent 70%); animation: radar 2s infinite; }
     </style>
 </head>
 <body>
-
     <div class="header">
         <div id="carDisplay" class="car-num">CONNECTING...</div>
         <div id="eventDisplay" class="event-title">SCATTER READY</div>
         <div id="gpsStatus" style="font-size: 11px; color: #555;">GPS: Initializing...</div>
     </div>
-
     <div class="radar-box">
         <div class="pulse"></div>
         <div id="radarStatus" class="status-text" style="color: var(--searching);">SEARCHING</div>
         <div id="pointsCount" style="font-size: 12px; color: #888; margin-top: 5px; z-index: 2;">0 / 0 FOUND</div>
     </div>
-
     <div id="list"></div>
 
 <script>
-    // --- 1. CONFIGURATION ---
     const SCATTER_DATA = {
-        event_name: "ALED'S TECH SCATTER",
+        event_name: "ALED_S_TECH_SCATTER",
         points: [
             { id: "Point 1", coords: "52.146921,-4.057032" },
             { id: "Point 2", coords: "51.989107,-3.726333" },
@@ -51,110 +43,77 @@
         ]
     };
 
-    const firebaseConfig = { 
-        databaseURL: "https://the-regulator-rally-default-rtdb.europe-west1.firebasedatabase.app" 
-    };
-
-    // Initialize Firebase
+    const firebaseConfig = { databaseURL: "https://the-regulator-rally-default-rtdb.europe-west1.firebasedatabase.app" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // --- 2. STATE ---
-    let carNum = prompt("Enter Car #:", "1") || "0";
-    let foundIds = new Set();
+    let carNum = localStorage.getItem('active_car') || prompt("Enter Car #:", "1") || "0";
+    localStorage.setItem('active_car', carNum);
+    
+    let foundIds = new Set(JSON.parse(localStorage.getItem('found_points_' + carNum) || "[]"));
+    
     document.getElementById('carDisplay').innerText = "CAR " + carNum + " ACTIVE";
-    document.getElementById('eventDisplay').innerText = SCATTER_DATA.event_name;
+    document.getElementById('eventDisplay').innerText = SCATTER_DATA.event_name.replace(/_/g, " ");
 
-    // --- 3. MATH & UI ---
     function calcDist(lat1, lon1, lat2, lon2) {
         const R = 6371e3;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + 
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+        const dLat = (lat2-lat1)*Math.PI/180;
+        const dLon = (lon2-lon1)*Math.PI/180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
     function renderList() {
         const container = document.getElementById('list');
         container.innerHTML = '';
-        
-        const sorted = [...SCATTER_DATA.points].sort((a, b) => foundIds.has(a.id) - foundIds.has(b.id));
-
+        const sorted = [...SCATTER_DATA.points].sort((a,b) => foundIds.has(a.id) - foundIds.has(b.id));
         sorted.forEach(c => {
             const isFound = foundIds.has(c.id);
             const card = document.createElement('div');
             card.className = `control-card ${isFound ? 'found' : ''}`;
-            card.innerHTML = `
-                <div>
-                    <b style="font-size:18px;">${c.id}</b>
-                    <div id="dist-${c.id}" style="font-size:13px; color:#888;">
-                        ${isFound ? 'STAMPED' : 'LOCATING...'}
-                    </div>
-                </div>
-                <div style="font-size:24px;">${isFound ? '✅' : '⭕'}</div>
-            `;
+            card.innerHTML = `<div><b style="font-size:18px;">${c.id}</b><div id="dist-${c.id}" style="font-size:13px; color:#888;">${isFound ? 'STAMPED' : 'LOCATING...'}</div></div><div style="font-size:24px;">${isFound ? '✅' : '⭕'}</div>`;
             container.appendChild(card);
         });
         document.getElementById('pointsCount').innerText = `${foundIds.size} / ${SCATTER_DATA.points.length} FOUND`;
+        localStorage.setItem('found_points_' + carNum, JSON.stringify([...foundIds]));
     }
 
-    function startTracking() {
-        if (!navigator.geolocation) {
-            alert("Geolocation not supported");
-            return;
-        }
-
-        navigator.geolocation.watchPosition(pos => {
-            const { latitude, longitude, accuracy } = pos.coords;
-            document.getElementById('gpsStatus').innerText = `GPS ACCURACY: ${accuracy.toFixed(1)}m`;
-            
-            SCATTER_DATA.points.forEach(c => {
-                if (foundIds.has(c.id)) return;
-
-                const [pLat, pLng] = c.coords.split(',').map(Number);
-                const distance = calcDist(latitude, longitude, pLat, pLng);
-                
-                const distEl = document.getElementById(`dist-${c.id}`);
-                if (distEl) distEl.innerText = Math.round(distance) + "m away";
-
-                // ARRIVAL RADIUS: 60 meters
-                if (distance < 60) {
-                    // 1. Mark as found immediately in local state
-                    foundIds.add(c.id);
-                    
-                    // 2. Immediate UI Feedback
-                    const status = document.getElementById('radarStatus');
-                    status.innerText = "FOUND!";
-                    status.style.color = "#28a745";
-                    renderList(); 
-
-                    // 3. Physical Feedback
-                    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-
-                    // 4. Background Cloud Sync
-                    db.ref(`scatter/${SCATTER_DATA.event_name}/car_${carNum}/${c.id}`).set({
-                        time: new Date().toLocaleTimeString(),
-                        timestamp: Date.now(),
-                        accuracy_at_find: accuracy
-                    }).catch(e => console.error("Firebase Sync Error:", e));
-                    
-                    // 5. Reset Radar status after 3 seconds
-                    setTimeout(() => {
-                        status.innerText = "SEARCHING";
-                        status.style.color = "#ffc107";
-                    }, 3000);
-                }
-            });
-        }, err => {
-            document.getElementById('gpsStatus').innerText = "GPS Error: Please enable location.";
-        }, { 
-            enableHighAccuracy: true, 
-            maximumAge: 0, 
-            timeout: 10000 
+    function syncFromCloud() {
+        db.ref(SCATTER_DATA.event_name + '/car_' + carNum).once('value', snapshot => {
+            const data = snapshot.val();
+            if(data) {
+                Object.keys(data).forEach(id => foundIds.add(id));
+                renderList();
+            }
         });
     }
 
+    function startTracking() {
+        navigator.geolocation.watchPosition(pos => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            document.getElementById('gpsStatus').innerText = `GPS ACCURACY: ${accuracy.toFixed(1)}m`;
+            SCATTER_DATA.points.forEach(c => {
+                if (foundIds.has(c.id)) return;
+                const [pLat, pLng] = c.coords.split(',').map(Number);
+                const distance = calcDist(latitude, longitude, pLat, pLng);
+                if (document.getElementById(`dist-${c.id}`)) document.getElementById(`dist-${c.id}`).innerText = Math.round(distance) + "m away";
+                if (distance < 60) {
+                    foundIds.add(c.id);
+                    renderList();
+                    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                    db.ref(SCATTER_DATA.event_name + '/car_' + carNum + '/' + c.id).set({
+                        time: new Date().toLocaleTimeString(),
+                        timestamp: firebase.database.ServerValue.TIMESTAMP
+                    });
+                    const s = document.getElementById('radarStatus');
+                    s.innerText = "FOUND!"; s.style.color = "#28a745";
+                    setTimeout(() => { s.innerText = "SEARCHING"; s.style.color = "#ffc107"; }, 3000);
+                }
+            });
+        }, null, { enableHighAccuracy: true });
+    }
+
+    syncFromCloud();
     renderList();
     startTracking();
 </script>
