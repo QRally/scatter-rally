@@ -113,7 +113,7 @@ const firebaseConfig = {
                 if (distEl) distEl.innerText = Math.round(distance) + "m away";
 
                 // ARRIVAL (50m Radius)
-                if (distance < 50 && accuracy < 45) {
+                if (distance < 60 && accuracy < 100) {
                     foundIds.add(c.id);
                     
                     // 1. Cloud Sync
