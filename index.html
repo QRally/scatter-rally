@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>SCATTER TEST</title>
+    <title>SCATTER MASTER v1.2</title>
     <style>
         :root { --bg: #050505; --card: #121212; --found: #28a745; --searching: #ffc107; --border: #333; }
         body { font-family: sans-serif; background: var(--bg); color: white; margin: 0; padding: 15px; }
@@ -11,7 +11,7 @@
         .radar-box { height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; border-radius: 15px; border: 2px solid var(--border); margin-bottom: 15px; position: relative; overflow: hidden; }
         .status-text { font-size: 28px; font-weight: 900; z-index: 2; letter-spacing: 3px; }
         .control-card { background: var(--card); padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #444; margin-bottom: 10px; }
-        .control-card.found { border-left-color: var(--found); opacity: 0.6; }
+        .control-card.found { border-left-color: var(--found); background: #0a150a; }
         @keyframes radar { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
         .pulse { position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,193,7,0.1) 0%, transparent 70%); animation: radar 2s infinite; }
     </style>
@@ -33,16 +33,26 @@
     <div id="list"></div>
 
 <script>
-    // 1. DATA (Hard-coded for immediate testing)
     const SCATTER_DATA = {
         points: [
             { id: "TEST 1", coords: "52.146921,-4.057032" },
             { id: "TEST 2", coords: "51.989107,-3.726333" },
-            { id: "LIVING ROOM", coords: "52.146870,-4.056885" } // Replace with your home coords!
+            { id: "LIVING ROOM", coords: "52.146870,-4.056885" } // Your updated home coords
         ]
     };
 
     let foundIds = new Set();
+
+    // The math that was missing!
+    function calcDist(lat1, lon1, lat2, lon2) {
+        const R = 6371e3; // Meters
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + 
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    }
 
     function renderList() {
         const container = document.getElementById('list');
@@ -51,7 +61,15 @@
             const isFound = foundIds.has(c.id);
             const card = document.createElement('div');
             card.className = `control-card ${isFound ? 'found' : ''}`;
-            card.innerHTML = `<b>${c.id}</b><div>${isFound ? '✅' : '⭕'}</div>`;
+            card.innerHTML = `
+                <div>
+                    <b>${c.id}</b>
+                    <div id="dist-${c.id}" style="font-size:12px; color:#888;">
+                        ${isFound ? 'CHECKED IN' : 'CALCULATING...'}
+                    </div>
+                </div>
+                <div>${isFound ? '✅' : '⭕'}</div>
+            `;
             container.appendChild(card);
         });
         document.getElementById('pointsCount').innerText = `${foundIds.size} / ${SCATTER_DATA.points.length} TOTAL`;
@@ -62,18 +80,38 @@
             const { latitude, longitude, accuracy } = pos.coords;
             document.getElementById('gpsStatus').innerText = `GPS ACCURACY: ${accuracy.toFixed(1)}m`;
             
-            // Check points...
             SCATTER_DATA.points.forEach(c => {
                 if (foundIds.has(c.id)) return;
-                // Add distance math here if you want meters on screen
-                // For now, let's just see the list appear!
+
+                const [pLat, pLng] = c.coords.split(',').map(Number);
+                const distance = calcDist(latitude, longitude, pLat, pLng);
+                
+                // Update the distance text on the card
+                const distEl = document.getElementById(`dist-${c.id}`);
+                if (distEl) distEl.innerText = Math.round(distance) + "m away";
+
+                // ARRIVAL TRIGGER (50 meters)
+                if (distance < 50 && accuracy < 45) {
+                    foundIds.add(c.id);
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                    
+                    // Visual feedback
+                    document.getElementById('radarStatus').innerText = "FOUND!";
+                    document.getElementById('radarStatus').style.color = "#28a745";
+                    
+                    setTimeout(() => {
+                        document.getElementById('radarStatus').innerText = "SEARCHING";
+                        document.getElementById('radarStatus').style.color = "#ffc107";
+                    }, 3000);
+
+                    renderList();
+                }
             });
         }, (err) => {
-            document.getElementById('gpsStatus').innerText = "GPS Error: " + err.message;
+            console.error(err);
         }, { enableHighAccuracy: true });
     }
 
-    // Initialize UI immediately
     renderList();
     startTracking();
 </script>
