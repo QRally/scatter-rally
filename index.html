@@ -3,57 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>SCATTER MASTER v2.0</title>
+    <title>SCATTER MASTER v2.1</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         :root { --bg: #050505; --card: #121212; --found: #28a745; --searching: #ffc107; --border: #333; --accent: #007bff; }
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: white; margin: 0; padding: 15px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: white; margin: 0; padding: 15px; overflow-x: hidden; }
+        
+        /* Flash Overlay */
+        #flash-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--found); opacity: 0; pointer-events: none;
+            z-index: 9999; transition: opacity 0.1s;
+        }
+        .flash-active { opacity: 0.8 !important; }
+
         .header { text-align: center; padding: 15px; background: var(--card); border-radius: 15px 15px 0 0; border: 1px solid var(--border); border-bottom: none; }
         .stats-bar { display: flex; background: #1a1a1a; border: 1px solid var(--border); border-radius: 0 0 15px 15px; margin-bottom: 15px; overflow: hidden; }
         .stat-item { flex: 1; padding: 10px; text-align: center; border-right: 1px solid var(--border); }
         .stat-item:last-child { border-right: none; }
         .stat-label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 2px; }
         .stat-value { font-family: monospace; font-size: 18px; font-weight: bold; color: var(--accent); }
-        .car-num { color: var(--searching); font-weight: bold; letter-spacing: 1px; font-size: 14px; }
-        .event-title { font-size: 20px; font-weight: 900; margin: 5px 0; }
+        
         .radar-box { height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; border-radius: 15px; border: 2px solid var(--border); margin-bottom: 15px; position: relative; overflow: hidden; }
         .status-text { font-size: 24px; font-weight: 900; z-index: 2; letter-spacing: 3px; }
-        .control-card { background: var(--card); padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #444; margin-bottom: 10px; }
-        .control-card.found { border-left-color: var(--found); background: #0a150a; opacity: 0.8; }
-        @keyframes radar { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
-        .pulse { position: absolute; width: 100%; height: 100%; background: radial-gradient(circle, rgba(255,193,7,0.1) 0%, transparent 70%); animation: radar 2s infinite; }
+        
+        .control-card { background: var(--card); padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 6px solid #444; margin-bottom: 10px; transition: all 0.3s; }
+        .control-card.found { border-left-color: var(--found); background: #0a150a; transform: scale(0.98); }
+        
+        @keyframes success-glow {
+            0% { box-shadow: 0 0 0px var(--found); }
+            50% { box-shadow: 0 0 20px var(--found); }
+            100% { box-shadow: 0 0 0px var(--found); }
+        }
+        .just-found { animation: success-glow 1s ease-in-out 2; border: 2px solid var(--found); }
     </style>
 </head>
 <body>
+    <div id="flash-overlay"></div>
+    
     <div class="header">
-        <div id="carDisplay" class="car-num">CONNECTING...</div>
-        <div id="eventDisplay" class="event-title">SCATTER READY</div>
+        <div id="carDisplay" class="car-num" style="color:var(--searching); font-weight:bold;">CONNECTING...</div>
+        <div id="eventDisplay" class="event-title" style="font-size:20px; font-weight:900;">SCATTER READY</div>
         <div id="gpsStatus" style="font-size: 11px; color: #555;">GPS: Initializing...</div>
     </div>
     
     <div class="stats-bar">
-        <div class="stat-item">
-            <div class="stat-label">Time Taken</div>
-            <div id="timerDisplay" class="stat-value">00:00:00</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-label">Odometer</div>
-            <div id="odoDisplay" class="stat-value">0.00 miles</div>
-        </div>
+        <div class="stat-item"><div class="stat-label">Time Taken</div><div id="timerDisplay" class="stat-value">00:00:00</div></div>
+        <div class="stat-item"><div class="stat-label">Odometer</div><div id="odoDisplay" class="stat-value">0.00 miles</div></div>
     </div>
 
     <div class="radar-box">
-        <div class="pulse"></div>
         <div id="radarStatus" class="status-text" style="color: var(--searching);">AWAITING START</div>
         <div id="pointsCount" style="font-size: 12px; color: #888; margin-top: 5px; z-index: 2;">0 / 12 FOUND</div>
     </div>
 
     <div id="list"></div>
 
+    <audio id="sndFound" src="https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"></audio>
+
 <script>
     const SCATTER_DATA = {
-        event_name: "ALEDS_TECH_SCATTER",
+        event_name: "ALED_S_TECH_SCATTER",
         points: [
             { id: "START", coords: "53.24027,-4.35012" },
             { id: "Point 1", coords: "53.22726,-4.35090" },
@@ -80,63 +91,66 @@
     let foundIds = new Set(JSON.parse(localStorage.getItem('found_points_' + carNum) || "[]"));
     let totalMeters = parseFloat(localStorage.getItem('odo_m_' + carNum) || "0");
     let lastPos = null;
-
-    // --- STOPWATCH LOGIC ---
     let timerRunning = false;
     let startTime = localStorage.getItem('start_time_' + carNum);
-    
-    if (foundIds.has("START") && !foundIds.has("FINISH")) {
-        timerRunning = true;
+
+    // Initial Timer State
+    if (foundIds.has("START") && !foundIds.has("FINISH")) timerRunning = true;
+
+    function triggerNoticeableFeedback(pointId) {
+        // 1. Visual Flash
+        const flash = document.getElementById('flash-overlay');
+        flash.classList.add('flash-active');
+        setTimeout(() => flash.classList.remove('flash-active'), 500);
+
+        // 2. Audio
+        const audio = document.getElementById('sndFound');
+        audio.play().catch(e => console.log("Audio play blocked until user interaction."));
+
+        // 3. Haptic (Vibrate)
+        if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500]);
+
+        // 4. Update Radar Status Loudly
+        const s = document.getElementById('radarStatus');
+        const oldText = s.innerText;
+        const oldColor = s.style.color;
+        s.innerText = pointId + " STAMPED!";
+        s.style.color = "var(--found)";
+        setTimeout(() => {
+            s.innerText = foundIds.has("FINISH") ? "FINISHED" : "SEARCHING";
+            s.style.color = "var(--searching)";
+        }, 5000);
     }
 
     function updateTimer() {
         if (!timerRunning || foundIds.has("FINISH")) {
-             if (foundIds.has("FINISH")) {
-                const finalTime = localStorage.getItem('final_time_taken_' + carNum);
-                if (finalTime) document.getElementById('timerDisplay').innerText = finalTime;
+            if (foundIds.has("FINISH")) {
+                document.getElementById('timerDisplay').innerText = localStorage.getItem('final_time_taken_' + carNum);
             }
             return;
         }
-
-        const now = Date.now();
-        const diff = now - startTime;
-        
+        const diff = Date.now() - startTime;
         const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
         const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
         const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
         const timeStr = `${h}:${m}:${s}`;
-        
         document.getElementById('timerDisplay').innerText = timeStr;
         localStorage.setItem('final_time_taken_' + carNum, timeStr); 
     }
     setInterval(updateTimer, 1000);
 
-    // --- UI UPDATES ---
-    document.getElementById('carDisplay').innerText = "CAR " + carNum + " ACTIVE";
-    document.getElementById('eventDisplay').innerText = SCATTER_DATA.event_name.replace(/_/g, " ");
-    
     function updateOdoDisplay() {
-        const miles = totalMeters * 0.000621371;
-        document.getElementById('odoDisplay').innerText = miles.toFixed(2) + " miles";
-    }
-    updateOdoDisplay();
-
-    function calcDist(lat1, lon1, lat2, lon2) {
-        const R = 6371e3;
-        const dLat = (lat2-lat1)*Math.PI/180;
-        const dLon = (lon2-lon1)*Math.PI/180;
-        const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        document.getElementById('odoDisplay').innerText = (totalMeters * 0.000621371).toFixed(2) + " miles";
     }
 
-    function renderList() {
+    function renderList(newId = null) {
         const container = document.getElementById('list');
         container.innerHTML = '';
         const sorted = [...SCATTER_DATA.points].sort((a,b) => foundIds.has(a.id) - foundIds.has(b.id));
         sorted.forEach(c => {
             const isFound = foundIds.has(c.id);
             const card = document.createElement('div');
-            card.className = `control-card ${isFound ? 'found' : ''}`;
+            card.className = `control-card ${isFound ? 'found' : ''} ${c.id === newId ? 'just-found' : ''}`;
             card.innerHTML = `<div><b style="font-size:18px;">${c.id}</b><div id="dist-${c.id}" style="font-size:13px; color:#888;">${isFound ? 'STAMPED' : 'LOCATING...'}</div></div><div style="font-size:24px;">${isFound ? '✅' : '⭕'}</div>`;
             container.appendChild(card);
         });
@@ -150,7 +164,11 @@
             document.getElementById('gpsStatus').innerText = `GPS ACCURACY: ${accuracy.toFixed(1)}m`;
 
             if (lastPos && foundIds.has("START") && !foundIds.has("FINISH")) {
-                const move = calcDist(lastPos.lat, lastPos.lng, latitude, longitude);
+                const R = 6371e3;
+                const dLat = (latitude-lastPos.lat)*Math.PI/180;
+                const dLon = (longitude-lastPos.lng)*Math.PI/180;
+                const a = Math.sin(dLat/2)**2 + Math.cos(lastPos.lat*Math.PI/180)*Math.cos(latitude*Math.PI/180)*Math.sin(dLon/2)**2;
+                const move = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
                 if (move > 2 && move < 150) { 
                     totalMeters += move;
                     localStorage.setItem('odo_m_' + carNum, totalMeters);
@@ -162,25 +180,22 @@
             SCATTER_DATA.points.forEach(c => {
                 if (foundIds.has(c.id)) return;
                 const [pLat, pLng] = c.coords.split(',').map(Number);
-                const distance = calcDist(latitude, longitude, pLat, pLng);
+                
+                const R = 6371e3;
+                const dLat = (pLat-latitude)*Math.PI/180;
+                const dLon = (pLng-longitude)*Math.PI/180;
+                const a = Math.sin(dLat/2)**2 + Math.cos(latitude*Math.PI/180)*Math.cos(pLat*Math.PI/180)*Math.sin(dLon/2)**2;
+                const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
                 if (document.getElementById(`dist-${c.id}`)) document.getElementById(`dist-${c.id}`).innerText = Math.round(distance) + "m away";
                 
                 if (distance < 60) {
                     foundIds.add(c.id);
+                    if (c.id === "START") { startTime = Date.now(); localStorage.setItem('start_time_' + carNum, startTime); timerRunning = true; }
+                    if (c.id === "FINISH") { timerRunning = false; }
                     
-                    if (c.id === "START") {
-                        startTime = Date.now();
-                        localStorage.setItem('start_time_' + carNum, startTime);
-                        timerRunning = true;
-                        document.getElementById('timerDisplay').style.color = "#28a745";
-                    }
-                    if (c.id === "FINISH") {
-                        timerRunning = false;
-                        document.getElementById('timerDisplay').style.color = "#ffffff";
-                    }
-
-                    renderList();
-                    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                    triggerNoticeableFeedback(c.id);
+                    renderList(c.id);
                     
                     db.ref(SCATTER_DATA.event_name + '/car_' + carNum + '/' + c.id).set({
                         time_of_day: new Date().toLocaleTimeString(),
@@ -188,23 +203,13 @@
                         elapsed_time: document.getElementById('timerDisplay').innerText,
                         timestamp: firebase.database.ServerValue.TIMESTAMP
                     });
-
-                    const s = document.getElementById('radarStatus');
-                    s.innerText = c.id + " FOUND!"; s.style.color = "#28a745";
-                    setTimeout(() => { s.innerText = foundIds.has("FINISH") ? "FINISHED" : "SEARCHING"; s.style.color = "#ffc107"; }, 3000);
                 }
             });
         }, null, { enableHighAccuracy: true });
     }
 
-    db.ref(SCATTER_DATA.event_name + '/car_' + carNum).once('value', snapshot => {
-        const data = snapshot.val();
-        if(data) { 
-            Object.keys(data).forEach(id => foundIds.add(id)); 
-            if (foundIds.has("START") && !foundIds.has("FINISH")) timerRunning = true;
-            renderList(); 
-        }
-    });
+    document.getElementById('carDisplay').innerText = "CAR " + carNum + " ACTIVE";
+    document.getElementById('eventDisplay').innerText = SCATTER_DATA.event_name.replace(/_/g, " ");
     renderList();
     startTracking();
 </script>
